@@ -1,0 +1,141 @@
+name: Build MariaDB for macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      mariadb_version:
+        description: 'MariaDB version to build'
+        required: true
+        default: '10.6.23'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14        # arm64 (Apple Silicon)
+            platform: darwin-arm64
+            arch: arm64
+          - os: macos-13        # x86_64 (Intel)
+            platform: darwin
+            arch: x86_64
+
+    runs-on: ${{ matrix.os }}
+    name: Build MariaDB ${{ inputs.mariadb_version }} (${{ matrix.platform }})
+
+    steps:
+      - name: Install build dependencies
+        run: |
+          brew install cmake openssl@3 lz4 lzo snappy zstd bison
+
+      - name: Download MariaDB source
+        run: |
+          VERSION=${{ inputs.mariadb_version }}
+          curl -L -o mariadb.tar.gz \
+            "https://downloads.mariadb.org/rest-api/mariadb/${VERSION}/mariadb-${VERSION}.tar.gz"
+          tar xzf mariadb.tar.gz
+          mv mariadb-${VERSION} mariadb-src
+
+      - name: Build MariaDB
+        run: |
+          OPENSSL_ROOT=$(brew --prefix openssl@3)
+          BISON_PREFIX=$(brew --prefix bison)
+
+          mkdir build && cd build
+
+          cmake ../mariadb-src \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+            -DCMAKE_INSTALL_PREFIX=$PWD/../install \
+            -DWITH_SSL=bundled \
+            -DWITH_ZLIB=bundled \
+            -DWITHOUT_ROCKSDB=ON \
+            -DWITHOUT_TOKUDB=ON \
+            -DWITHOUT_MROONGA=ON \
+            -DWITHOUT_SPIDER=ON \
+            -DWITHOUT_CONNECT=ON \
+            -DWITHOUT_OQGRAPH=ON \
+            -DWITHOUT_SPHINX=ON \
+            -DWITHOUT_FEDERATED=ON \
+            -DWITHOUT_FEDERATEDX=ON \
+            -DWITHOUT_CASSANDRA=ON \
+            -DWITHOUT_SEQUENCE=OFF \
+            -DWITHOUT_PERFSCHEMA_STORAGE_ENGINE=ON \
+            -DWITHOUT_TEST_DB=ON \
+            -DWITHOUT_EXAMPLE_STORAGE_ENGINE=ON \
+            -DWITH_UNIT_TESTS=OFF \
+            -DENABLE_DTRACE=OFF \
+            -DPLUGIN_AUTH_PAM=NO \
+            -DBISON_EXECUTABLE=$(brew --prefix bison)/bin/bison
+
+          make -j$(sysctl -n hw.logicalcpu) mysqld mysqladmin mysql mysqldump mysqlcheck mysql_install_db
+          make install
+
+      - name: Bundle dylibs and fix rpaths
+        run: |
+          BIN_DIR=install/bin
+          LIB_DIR=install/lib
+
+          # Identify non-system dylibs linked by mysqld
+          # @loader_path refs are already relative; skip /usr/lib and /System
+          fix_binary() {
+            local binary="$1"
+            local libs=$(otool -L "$binary" | awk 'NR>1 {print $1}' \
+              | grep -v '@loader_path' \
+              | grep -v '/usr/lib' \
+              | grep -v '/System' \
+              | grep -v '/usr/local/lib/libstdc')
+
+            for lib in $libs; do
+              if [ -f "$lib" ]; then
+                local libname=$(basename "$lib")
+                cp -n "$lib" "$LIB_DIR/$libname" 2>/dev/null || true
+                install_name_tool -change "$lib" "@loader_path/../lib/$libname" "$binary"
+              fi
+            done
+          }
+
+          for bin in $BIN_DIR/mysqld $BIN_DIR/mysql $BIN_DIR/mysqladmin $BIN_DIR/mysqldump $BIN_DIR/mysqlcheck; do
+            [ -f "$bin" ] && fix_binary "$bin"
+          done
+
+          # Fix id on any bundled dylibs
+          for dylib in $LIB_DIR/*.dylib; do
+            [ -f "$dylib" ] && install_name_tool -id "@loader_path/$(basename $dylib)" "$dylib"
+          done
+
+      - name: Strip debug symbols
+        run: |
+          strip -S install/bin/mysqld install/bin/mysql install/bin/mysqladmin \
+            install/bin/mysqldump install/bin/mysqlcheck || true
+
+      - name: Smoke test — mysqld --version
+        run: |
+          ./install/bin/mysqld --version
+
+      - name: Package
+        run: |
+          VERSION=${{ inputs.mariadb_version }}
+          PLATFORM=${{ matrix.platform }}
+          TARNAME="bin-${PLATFORM}-${VERSION}.tar.gz"
+
+          # Mirror the structure Local expects: bin/{platform}/bin/* and bin/{platform}/lib/*
+          mkdir -p dist/bin dist/lib
+
+          cp install/bin/mysqld install/bin/mysql install/bin/mysqladmin \
+             install/bin/mysqldump install/bin/mysqlcheck install/bin/mysql_install_db \
+             dist/bin/ 2>/dev/null || true
+
+          cp install/lib/*.dylib dist/lib/ 2>/dev/null || true
+
+          tar czf "$TARNAME" -C dist .
+
+          echo "Built: $TARNAME"
+          ls -lh "$TARNAME"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mariadb-${{ inputs.mariadb_version }}-${{ matrix.platform }}
+          path: bin-${{ matrix.platform }}-${{ inputs.mariadb_version }}.tar.gz
+          retention-days: 7
