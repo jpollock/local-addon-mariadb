@@ -26,7 +26,7 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
-          brew install cmake openssl@3 lz4 lzo snappy zstd bison
+          brew install cmake openssl@3 lz4 lzo snappy zstd bison dylibbundler
 
       - name: Download MariaDB source
         run: |
@@ -75,33 +75,24 @@ jobs:
         run: |
           BIN_DIR=install/bin
           LIB_DIR=install/lib
+          mkdir -p "$LIB_DIR"
 
-          # Identify non-system dylibs linked by mysqld
-          # @loader_path refs are already relative; skip /usr/lib and /System
-          fix_binary() {
-            local binary="$1"
-            local libs=$(otool -L "$binary" | awk 'NR>1 {print $1}' \
-              | grep -v '@loader_path' \
-              | grep -v '/usr/lib' \
-              | grep -v '/System' \
-              | grep -v '/usr/local/lib/libstdc')
-
-            for lib in $libs; do
-              if [ -f "$lib" ]; then
-                local libname=$(basename "$lib")
-                cp -n "$lib" "$LIB_DIR/$libname" 2>/dev/null || true
-                install_name_tool -change "$lib" "@loader_path/../lib/$libname" "$binary"
-              fi
-            done
-          }
-
-          for bin in $BIN_DIR/mysqld $BIN_DIR/mysql $BIN_DIR/mysqladmin $BIN_DIR/mysqldump $BIN_DIR/mysqlcheck; do
-            [ -f "$bin" ] && fix_binary "$bin"
+          # Use dylibbundler to recursively walk and bundle all non-system dylib deps
+          # This handles transitive deps (e.g. libgnutls → libnettle → libgmp, etc.)
+          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck; do
+            [ -f "$BIN_DIR/$bin" ] || continue
+            dylibbundler \
+              --bundle-deps \
+              --fix-file "$BIN_DIR/$bin" \
+              --dest-dir "$LIB_DIR" \
+              --install-path "@loader_path/../lib/" \
+              --overwrite-files \
+              2>&1 | grep -v "^$" || true
           done
 
-          # Fix id on any bundled dylibs
-          for dylib in $LIB_DIR/*.dylib; do
-            [ -f "$dylib" ] && install_name_tool -id "@loader_path/$(basename $dylib)" "$dylib"
+          # Fix id on bundled dylibs so they reference themselves correctly
+          for dylib in "$LIB_DIR"/*.dylib; do
+            [ -f "$dylib" ] && install_name_tool -id "@loader_path/$(basename $dylib)" "$dylib" 2>/dev/null || true
           done
 
       - name: Strip debug symbols
