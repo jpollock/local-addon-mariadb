@@ -107,6 +107,18 @@ jobs:
           MYSQLD=$([ -f ./install/bin/mysqld ] && echo ./install/bin/mysqld || echo ./install/bin/mariadbd)
           $MYSQLD --version
 
+      - name: Ad-hoc sign binaries and dylibs
+        run: |
+          # dylibbundler calls install_name_tool which invalidates existing signatures.
+          # macOS requires all binaries and loaded dylibs to be signed (ad-hoc is sufficient).
+          for bin in install/bin/mysqld install/bin/mariadbd install/bin/mysql install/bin/mariadb \
+                     install/bin/mysqladmin install/bin/mysqldump install/bin/mysqlcheck; do
+            [ -f "$bin" ] && codesign --sign - --force "$bin" && echo "Signed: $bin" || true
+          done
+          for dylib in install/lib/*.dylib; do
+            [ -f "$dylib" ] && codesign --sign - --force "$dylib" || true
+          done
+
       - name: Package
         run: |
           VERSION=${{ inputs.mariadb_version }}
