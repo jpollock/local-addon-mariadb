@@ -68,7 +68,7 @@ jobs:
             -DPLUGIN_AUTH_PAM=NO \
             -DBISON_EXECUTABLE=$(brew --prefix bison)/bin/bison
 
-          make -j$(sysctl -n hw.logicalcpu) mysqld mysqladmin mysql mysqldump mysqlcheck mysql_install_db
+          make -j$(sysctl -n hw.logicalcpu)
           make install
 
       - name: Bundle dylibs and fix rpaths
@@ -106,12 +106,15 @@ jobs:
 
       - name: Strip debug symbols
         run: |
-          strip -S install/bin/mysqld install/bin/mysql install/bin/mysqladmin \
-            install/bin/mysqldump install/bin/mysqlcheck || true
+          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck; do
+            [ -f "install/bin/$bin" ] && strip -S "install/bin/$bin" || true
+          done
 
       - name: Smoke test — mysqld --version
         run: |
-          ./install/bin/mysqld --version
+          # MariaDB 10.5+ installs mariadbd; mysqld is a symlink
+          MYSQLD=$([ -f ./install/bin/mysqld ] && echo ./install/bin/mysqld || echo ./install/bin/mariadbd)
+          $MYSQLD --version
 
       - name: Package
         run: |
