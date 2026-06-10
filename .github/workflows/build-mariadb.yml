@@ -1,4 +1,4 @@
-name: Build MariaDB for macOS
+name: Build MariaDB
 
 on:
   workflow_dispatch:
@@ -19,14 +19,25 @@ jobs:
           - os: macos-13        # x86_64 (Intel)
             platform: darwin
             arch: x86_64
+          - os: ubuntu-22.04    # Linux x86_64
+            platform: linux
+            arch: x86_64
 
     runs-on: ${{ matrix.os }}
     name: Build MariaDB ${{ inputs.mariadb_version }} (${{ matrix.platform }})
 
     steps:
-      - name: Install build dependencies
+      - name: Install build dependencies (macOS)
+        if: runner.os == 'macOS'
         run: |
           brew install cmake openssl@3 lz4 lzo snappy zstd bison dylibbundler
+
+      - name: Install build dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y cmake bison libssl-dev libncurses5-dev \
+            libpcre2-dev libbz2-dev libzstd-dev liblz4-dev liblzo2-dev
 
       - name: Download MariaDB source
         run: |
@@ -36,11 +47,9 @@ jobs:
           tar xzf mariadb.tar.gz
           mv mariadb-${VERSION} mariadb-src
 
-      - name: Build MariaDB
+      - name: Build MariaDB (macOS)
+        if: runner.os == 'macOS'
         run: |
-          OPENSSL_ROOT=$(brew --prefix openssl@3)
-          BISON_PREFIX=$(brew --prefix bison)
-
           mkdir build && cd build
 
           cmake ../mariadb-src \
@@ -71,14 +80,61 @@ jobs:
           make -j$(sysctl -n hw.logicalcpu)
           make install
 
-      - name: Bundle dylibs and fix rpaths
+      - name: Build MariaDB (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir build && cd build
+
+          cmake ../mariadb-src \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$PWD/../install \
+            -DWITH_SSL=bundled \
+            -DWITH_ZLIB=bundled \
+            -DWITHOUT_ROCKSDB=ON \
+            -DWITHOUT_TOKUDB=ON \
+            -DWITHOUT_MROONGA=ON \
+            -DWITHOUT_SPIDER=ON \
+            -DWITHOUT_CONNECT=ON \
+            -DWITHOUT_OQGRAPH=ON \
+            -DWITHOUT_SPHINX=ON \
+            -DWITHOUT_FEDERATED=ON \
+            -DWITHOUT_FEDERATEDX=ON \
+            -DWITHOUT_CASSANDRA=ON \
+            -DWITHOUT_SEQUENCE=OFF \
+            -DWITHOUT_PERFSCHEMA_STORAGE_ENGINE=ON \
+            -DWITHOUT_TEST_DB=ON \
+            -DWITHOUT_EXAMPLE_STORAGE_ENGINE=ON \
+            -DWITH_UNIT_TESTS=OFF \
+            -DENABLE_DTRACE=OFF \
+            -DPLUGIN_AUTH_PAM=NO
+
+          make -j$(nproc)
+          make install
+
+      - name: Discover mysql_install_db
+        run: |
+          echo "=== Checking for mysql_install_db ==="
+          echo "install/bin:"
+          ls install/bin/ | grep -i install || echo "  (not in bin/)"
+          echo "install/scripts:"
+          ls install/scripts/ 2>/dev/null | grep -i install || echo "  (scripts/ missing or empty)"
+
+          # Determine init strategy for this build
+          if [ -f install/bin/mysql_install_db ] || [ -f install/scripts/mysql_install_db ]; then
+            echo "INIT_STRATEGY=mysql_install_db" >> $GITHUB_ENV
+            echo "✓ mysql_install_db found — will use Option A"
+          else
+            echo "INIT_STRATEGY=bootstrap_sql" >> $GITHUB_ENV
+            echo "⚠ mysql_install_db not found — will fall back to bootstrap SQL"
+          fi
+
+      - name: Bundle dylibs and fix rpaths (macOS only)
+        if: runner.os == 'macOS'
         run: |
           BIN_DIR=install/bin
           LIB_DIR=install/lib
           mkdir -p "$LIB_DIR"
 
-          # Use dylibbundler to recursively walk and bundle all non-system dylib deps
-          # This handles transitive deps (e.g. libgnutls → libnettle → libgmp, etc.)
           for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck; do
             [ -f "$BIN_DIR/$bin" ] || continue
             dylibbundler \
@@ -90,7 +146,6 @@ jobs:
               2>&1 | grep -v "^$" || true
           done
 
-          # Fix id on bundled dylibs so they reference themselves correctly
           for dylib in "$LIB_DIR"/*.dylib; do
             [ -f "$dylib" ] && install_name_tool -id "@loader_path/$(basename $dylib)" "$dylib" 2>/dev/null || true
           done
@@ -103,17 +158,15 @@ jobs:
 
       - name: Smoke test — mysqld --version
         run: |
-          # MariaDB 10.5+ installs mariadbd; mysqld is a symlink
           MYSQLD=$([ -f ./install/bin/mysqld ] && echo ./install/bin/mysqld || echo ./install/bin/mariadbd)
           $MYSQLD --version
 
-      - name: Ad-hoc sign binaries and dylibs
+      - name: Ad-hoc sign binaries and dylibs (macOS only)
+        if: runner.os == 'macOS'
         run: |
-          # dylibbundler calls install_name_tool which invalidates existing signatures.
-          # macOS requires all binaries and loaded dylibs to be signed (ad-hoc is sufficient).
           for bin in install/bin/mysqld install/bin/mariadbd install/bin/mysql install/bin/mariadb \
                      install/bin/mysqladmin install/bin/mysqldump install/bin/mysqlcheck; do
-            [ -f "$bin" ] && codesign --sign - --force "$bin" && echo "Signed: $bin" || true
+            [ -f "$bin" ] && codesign --sign - --force "$bin" || true
           done
           for dylib in install/lib/*.dylib; do
             [ -f "$dylib" ] && codesign --sign - --force "$dylib" || true
@@ -125,22 +178,32 @@ jobs:
           PLATFORM=${{ matrix.platform }}
           TARNAME="bin-${PLATFORM}-${VERSION}.tar.gz"
 
-          # Mirror the structure Local expects: bin/{platform}/bin/*, lib/*, share/*
           mkdir -p dist/bin dist/lib dist/share
 
-          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck mysql_install_db mariadb-install-db; do
+          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck; do
             [ -f "install/bin/$bin" ] && cp "install/bin/$bin" dist/bin/ || true
           done
 
-          cp install/lib/*.dylib dist/lib/ 2>/dev/null || true
+          # Option A: bundle mysql_install_db if present (prefer bin/, fall back to scripts/)
+          if [ -f install/bin/mysql_install_db ]; then
+            cp install/bin/mysql_install_db dist/bin/
+            echo "Packaged mysql_install_db from bin/ (Option A)"
+          elif [ -f install/scripts/mysql_install_db ]; then
+            cp install/scripts/mysql_install_db dist/bin/
+            echo "Packaged mysql_install_db from scripts/ (Option A)"
+          else
+            echo "mysql_install_db not found — addon will use bootstrap SQL fallback (Option B)"
+          fi
 
-          # share/ contains SQL init scripts needed by mysql_install_db
+          cp install/lib/*.dylib dist/lib/ 2>/dev/null || true
+          cp install/lib/*.so* dist/lib/ 2>/dev/null || true
+
+          # share/ has SQL init scripts — needed for both Option A and B
           cp -r install/share/. dist/share/
 
           tar czf "$TARNAME" -C dist .
-
-          echo "Built: $TARNAME"
-          ls -lh "$TARNAME"
+          echo "Init strategy: $INIT_STRATEGY"
+          echo "Built: $TARNAME ($(ls -lh $TARNAME | awk '{print $5}'))"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
