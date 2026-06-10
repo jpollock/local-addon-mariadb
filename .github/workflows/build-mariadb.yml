@@ -11,6 +11,7 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-14        # arm64 (Apple Silicon)
@@ -37,7 +38,8 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y cmake bison libssl-dev libncurses5-dev \
-            libpcre2-dev libbz2-dev libzstd-dev liblz4-dev liblzo2-dev
+            libpcre2-dev libbz2-dev libzstd-dev liblz4-dev liblzo2-dev \
+            libgnutls28-dev
 
       - name: Download MariaDB source
         run: |
