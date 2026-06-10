@@ -122,14 +122,17 @@ jobs:
           PLATFORM=${{ matrix.platform }}
           TARNAME="bin-${PLATFORM}-${VERSION}.tar.gz"
 
-          # Mirror the structure Local expects: bin/{platform}/bin/* and bin/{platform}/lib/*
-          mkdir -p dist/bin dist/lib
+          # Mirror the structure Local expects: bin/{platform}/bin/*, lib/*, share/*
+          mkdir -p dist/bin dist/lib dist/share
 
-          cp install/bin/mysqld install/bin/mysql install/bin/mysqladmin \
-             install/bin/mysqldump install/bin/mysqlcheck install/bin/mysql_install_db \
-             dist/bin/ 2>/dev/null || true
+          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck mysql_install_db mariadb-install-db; do
+            [ -f "install/bin/$bin" ] && cp "install/bin/$bin" dist/bin/ || true
+          done
 
           cp install/lib/*.dylib dist/lib/ 2>/dev/null || true
+
+          # share/ contains SQL init scripts needed by mysql_install_db
+          cp -r install/share/. dist/share/
 
           tar czf "$TARNAME" -C dist .
 
