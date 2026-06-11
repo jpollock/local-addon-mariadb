@@ -137,7 +137,7 @@ jobs:
           LIB_DIR=install/lib
           mkdir -p "$LIB_DIR"
 
-          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck; do
+          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck my_print_defaults; do
             [ -f "$BIN_DIR/$bin" ] || continue
             dylibbundler \
               --bundle-deps \
@@ -154,7 +154,7 @@ jobs:
 
       - name: Strip debug symbols
         run: |
-          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck; do
+          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck my_print_defaults; do
             [ -f "install/bin/$bin" ] && strip -S "install/bin/$bin" || true
           done
 
@@ -167,7 +167,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           for bin in install/bin/mysqld install/bin/mariadbd install/bin/mysql install/bin/mariadb \
-                     install/bin/mysqladmin install/bin/mysqldump install/bin/mysqlcheck; do
+                     install/bin/mysqladmin install/bin/mysqldump install/bin/mysqlcheck install/bin/my_print_defaults; do
             [ -f "$bin" ] && codesign --sign - --force "$bin" || true
           done
           for dylib in install/lib/*.dylib; do
@@ -182,7 +182,7 @@ jobs:
 
           mkdir -p dist/bin dist/lib dist/share
 
-          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck; do
+          for bin in mysqld mariadbd mysql mariadb mysqladmin mysqldump mysqlcheck my_print_defaults; do
             [ -f "install/bin/$bin" ] && cp "install/bin/$bin" dist/bin/ || true
           done
 
