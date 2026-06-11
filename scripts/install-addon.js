@@ -1,43 +1,33 @@
-// Copies the built addon into Local's lightning-services dir for local development
+// Creates a symlink from Local's lightning-services dir to this repo.
+// After running this once, `npm run build` is all you need — no re-install.
 const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
 
 const SERVICE_NAME = 'mariadb-10.6.23+0';
-const DEST = path.join(
-    os.homedir(),
-    'Library/Application Support/Local/lightning-services',
-    SERVICE_NAME
-);
-
-const filesToCopy = ['package.json', 'lib', 'conf'];
-const bundledDeps = ['delay', 'fs-extra', 'node-fetch', 'slash', 'tar'];
+const SERVICES_DIR = path.join(os.homedir(), 'Library/Application Support/Local/lightning-services');
+const LINK = path.join(SERVICES_DIR, SERVICE_NAME);
+const TARGET = path.resolve(__dirname, '..');
 
 async function install() {
-    await fs.ensureDir(DEST);
+    await fs.ensureDir(SERVICES_DIR);
 
-    for (const file of filesToCopy) {
-        const src = path.join(__dirname, '..', file);
-        const dst = path.join(DEST, file);
-        if (await fs.pathExists(src)) {
-            await fs.copy(src, dst, { overwrite: true });
-            console.log(`Copied ${file}`);
+    // Remove existing copy or stale symlink
+    if (await fs.pathExists(LINK)) {
+        const stat = await fs.lstat(LINK);
+        if (stat.isSymbolicLink()) {
+            await fs.remove(LINK);
+            console.log('Removed stale symlink.');
         } else {
-            console.warn(`Skipping ${file} (not found — run npm run build first?)`);
+            await fs.remove(LINK);
+            console.log('Removed previous copy.');
         }
     }
 
-    for (const dep of bundledDeps) {
-        const src = path.join(__dirname, '..', 'node_modules', dep);
-        const dst = path.join(DEST, 'node_modules', dep);
-        if (await fs.pathExists(src)) {
-            await fs.copy(src, dst, { overwrite: true });
-            console.log(`Copied node_modules/${dep}`);
-        }
-    }
-
-    console.log(`\n✓ Installed to: ${DEST}`);
-    console.log('Restart Local to load the addon.');
+    await fs.symlink(TARGET, LINK);
+    console.log(`✓ Symlinked: ${LINK}`);
+    console.log(`  → ${TARGET}`);
+    console.log('\nRun `npm run build` to compile, then restart Local to load the addon.');
 }
 
 install().catch(err => {
