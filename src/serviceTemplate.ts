@@ -144,4 +144,13 @@ export function createServiceDirectorySync(
     for (const platform of ['darwin-arm64', 'darwin', 'linux']) {
         fs.ensureDirSync(path.join(serviceDir, 'bin', platform, 'bin'));
     }
+
+    // Symlink node_modules from the addon so MariadbService.js can require
+    // 'slash', 'fs-extra', 'delay'. The service dir itself has no node_modules —
+    // without this, Node fails to resolve these deps and the service silently fails to load.
+    const addonNodeModules = path.join(path.dirname(addonLibDir), 'node_modules');
+    const serviceNodeModules = path.join(serviceDir, 'node_modules');
+    if (!fs.pathExistsSync(serviceNodeModules) && fs.pathExistsSync(addonNodeModules)) {
+        fs.symlinkSync(addonNodeModules, serviceNodeModules);
+    }
 }
