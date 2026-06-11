@@ -27,10 +27,18 @@ exports.GITHUB_REPO = '${GITHUB_REPO}';
 `;
 }
 
-/** Generated package.json — required for Local's AddonLoaderService to load the service. */
+/** Generated package.json — required for Local's AddonLoaderService to load the service.
+ *
+ *  IMPORTANT: `name` must be unique per version. Both this service and the bundled
+ *  mariadb-10.6.23+0 use `"name": "mariadb"` which causes Local's isAddonLoaded()
+ *  dedup to skip whichever loads second (same package name = treated as competing
+ *  versions of the same addon). Using "mariadb-{version}" as package name gives each
+ *  a distinct identity so both load. The service name passed to registerLightningService
+ *  is still 'mariadb' (set in lib/main.js), which is what the dropdown reads.
+ */
 export function generatePackageJson(version: string): Record<string, unknown> {
     return {
-        name: 'mariadb',
+        name: `mariadb-${version}`,
         version: `${version}+0`,
         productName: `Lightning Service: MariaDB Server ${version}`,
         main: 'lib/main.js',

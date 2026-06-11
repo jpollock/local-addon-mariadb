@@ -37,7 +37,7 @@ describe('generatePackageJson', () => {
     it('contains the correct version and lightning service tags', () => {
         const pkg = generatePackageJson('10.11.11');
         expect(pkg.version).toBe('10.11.11+0');
-        expect(pkg.name).toBe('mariadb');
+        expect(pkg.name).toBe('mariadb-10.11.11');
         expect(pkg.tags).toContain('local-lightning-service');
         expect(pkg.main).toBe('lib/main.js');
     });
