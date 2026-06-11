@@ -15,10 +15,16 @@ function patchBundledService(userDataPath: string): void {
     try {
         if (!fs.pathExistsSync(lightningServiceDir)) return;
 
-        // Replace MariadbService.js with cross-platform version
+        // Replace MariadbService.js with cross-platform version.
+        // Also copy constants.js — MariadbService.js imports MARIADB_VERSION from it.
         fs.copySync(
             path.join(__dirname, 'MariadbService.js'),
             path.join(lightningServiceDir, 'lib', 'MariadbService.js'),
+            { overwrite: true }
+        );
+        fs.copySync(
+            path.join(__dirname, 'constants.js'),
+            path.join(lightningServiceDir, 'lib', 'constants.js'),
             { overwrite: true }
         );
 
