@@ -174,7 +174,10 @@ describe('10.11.11 service directory creation', () => {
     });
 
     afterEach(async () => {
+        // Allow fire-and-forget setupNewServiceVersion to settle before removing tmpDir
+        await new Promise(resolve => setTimeout(resolve, 300));
         await fs.remove(tmpDir);
+        jest.clearAllMocks();
     });
 
     it('creates the 10.11.11 service directory on startup', () => {
@@ -222,7 +225,10 @@ describe('10.11.11 service directory creation', () => {
         const { downloadBinaries } = require('../src/downloader');
         (downloadBinaries as jest.Mock).mockClear();
         main(makeContext(userDataPath));
-        // downloadBinaries is called at least once per version
+        // downloadBinaries is called synchronously for the bundled version (10.6.23).
+        // For 10.11.11 it fires after createServiceDirectory resolves, so we only
+        // assert the bundled-version call here — the async call is tested via the
+        // 200ms timer tests above which verify the service dir gets created.
         expect((downloadBinaries as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(1);
     });
 });
