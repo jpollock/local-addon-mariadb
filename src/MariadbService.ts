@@ -98,14 +98,14 @@ export default class MariadbService extends LocalMain.LightningService {
             args.push(`--basedir=${this.getBasedir(this.currentPlatform())}`);
         }
 
-        await LocalMain.execFilePromise(this.bin.mysql_install_db, args);
+        await LocalMain.execFilePromise(this.bin?.mysql_install_db!, args);
     }
 
     private async setupMysqlUser(): Promise<void> {
         this._logger.info('Setting up MariaDB user...');
         await this.waitForDB(true);
         try {
-            await LocalMain.execFilePromise(this.bin.mysql, [
+            await LocalMain.execFilePromise(this.bin?.mysql!, [
                 '--password=',
                 '-e',
                 `ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'root';`,
@@ -123,7 +123,7 @@ export default class MariadbService extends LocalMain.LightningService {
 
         for (let i = 0; i < maxTries; i++) {
             try {
-                await LocalMain.execFilePromise(this.bin.mysqladmin, [
+                await LocalMain.execFilePromise(this.bin?.mysqladmin!, [
                     ...(noPassword ? ['--password='] : []),
                     'ping',
                 ], { env: { MYSQL_HOME: this.configPath } });
@@ -143,7 +143,7 @@ export default class MariadbService extends LocalMain.LightningService {
     private async setupDatabase(): Promise<void> {
         this._logger.info('Creating MariaDB database...');
         try {
-            await LocalMain.execFilePromise(this.bin.mysql, [
+            await LocalMain.execFilePromise(this.bin?.mysql!, [
                 '-e', 'CREATE DATABASE local;',
             ], { env: { MYSQL_HOME: this.configPath } });
         } catch (e: any) {
@@ -155,18 +155,18 @@ export default class MariadbService extends LocalMain.LightningService {
     get configVariables(): Record<string, string | number> {
         return {
             datadir:       this.dataPath,
-            port:          this.port,
+            port:          this.port ?? 3306,
             socket:        this.socket.replace('\\', '\\\\'),
             clientAddress: '127.0.0.1',
             bindAddress:   '127.0.0.1',
         };
     }
 
-    start(): LocalMain.ProcessDescriptor[] {
+    start(): any[] {
         fs.ensureDirSync(this.runPath);
         return [{
             name:    'mariadb',
-            binPath: this.bin.mysqld,
+            binPath: this.bin?.mysqld,
             args:    [`--defaults-file=${slash(path.join(this.configPath, 'my.cnf'))}`],
         }];
     }
