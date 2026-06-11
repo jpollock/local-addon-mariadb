@@ -17,7 +17,7 @@ jobs:
           - os: macos-14        # arm64 (Apple Silicon)
             platform: darwin-arm64
             arch: arm64
-          - os: macos-13        # x86_64 (Intel)
+          - os: macos-15-intel  # x86_64 (Intel)
             platform: darwin
             arch: x86_64
           - os: ubuntu-22.04    # Linux x86_64
