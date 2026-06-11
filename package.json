@@ -52,6 +52,9 @@
     "testMatch": ["**/tests/**/*.test.ts"],
     "moduleNameMapper": {
       "@getflywheel/local/main": "<rootDir>/tests/__mocks__/local-main.ts"
+    },
+    "transform": {
+      "^.+\\.tsx?$": ["ts-jest", { "diagnostics": false }]
     }
   }
 }
