@@ -85,20 +85,71 @@ export default class MariadbService extends LocalMain.LightningService {
         this._logger.info('Initializing MariaDB datadir...', { dataPath: this.dataPath });
         await fs.ensureDir(this.dataPath);
 
-        const args = [
-            `--datadir=${this.dataPath}`,
-            `--port=${this.port}`,
-            `--socket=${this.socket}`,
-            `--password=root`,
-            `--default-user=root`,
-        ];
-
-        // mysql_install_db on macOS/Linux is a shell script needing --basedir to find share/ SQL files
-        if (process.platform !== 'win32') {
-            args.push(`--basedir=${this.getBasedir(this.currentPlatform())}`);
+        if (process.platform === 'win32') {
+            // Windows: mysql_install_db.exe handles quoting correctly
+            await LocalMain.execFilePromise(this.bin?.mysql_install_db!, [
+                `--datadir=${this.dataPath}`,
+                `--port=${this.port}`,
+                `--socket=${this.socket}`,
+                `--password=root`,
+                `--default-user=root`,
+            ]);
+        } else {
+            // macOS/Linux: mysql_install_db shell script cannot handle spaces in paths
+            // (Local's userDataPath always contains "Application Support"). Use mysqld
+            // --bootstrap with the SQL init files directly — equivalent to mysql_install_db.
+            await this.bootstrapDatadir();
         }
+    }
 
-        await LocalMain.execFilePromise(this.bin?.mysql_install_db!, args);
+    private async bootstrapDatadir(): Promise<void> {
+        const platform = this.currentPlatform();
+        const shareDir = path.join(this.getBasedir(platform), 'share');
+
+        const systemTables = fs.readFileSync(path.join(shareDir, 'mysql_system_tables.sql'), 'utf8');
+        const systemData = fs.readFileSync(path.join(shareDir, 'mysql_system_tables_data.sql'), 'utf8');
+
+        // Set root password via global_priv (MariaDB 10.4+ auth storage)
+        const bootstrapSQL = [
+            'CREATE DATABASE IF NOT EXISTS mysql;',
+            'USE mysql;',
+            systemTables,
+            'USE mysql;',
+            systemData,
+            `UPDATE mysql.global_priv SET priv=json_set(priv,'$.plugin','mysql_native_password','$.authentication_string',PASSWORD('root')) WHERE user='root' AND host='localhost';`,
+            'FLUSH PRIVILEGES;',
+        ].join('\n');
+
+        const { execFilePromise } = LocalMain as any;
+
+        // Pipe SQL into mysqld --bootstrap — no shell, no space-in-path issues
+        await new Promise<void>((resolve, reject) => {
+            const child = require('child_process').spawn(
+                this.bin?.mysqld!,
+                [
+                    '--no-defaults',
+                    '--bootstrap',
+                    `--datadir=${this.dataPath}`,
+                    `--basedir=${this.getBasedir(platform)}`,
+                    `--socket=/tmp/mariadb-bootstrap-${process.pid}.sock`,
+                ],
+                { stdio: ['pipe', 'ignore', 'pipe'] }
+            );
+            child.stdin.write(bootstrapSQL);
+            child.stdin.end();
+
+            let stderr = '';
+            child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+            child.on('close', (code: number) => {
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`MariaDB bootstrap failed (exit ${code}):\n${stderr.slice(-500)}`));
+                }
+            });
+            child.on('error', reject);
+        });
     }
 
     private async setupMysqlUser(): Promise<void> {
