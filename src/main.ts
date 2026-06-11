@@ -1,4 +1,5 @@
 import path from 'path';
+import os from 'os';
 import fs from 'fs-extra';
 import { downloadBinaries } from './downloader';
 import { MARIADB_VERSION } from './constants';
@@ -41,13 +42,19 @@ function patchBundledService(userDataPath: string): void {
     }
 }
 
-export default function main(context: any): void {
-    const userDataPath: string = context?.environment?.userDataPath ?? '';
-    if (!userDataPath) {
-        console.error('[local-addon-mariadb] No userDataPath in context — cannot patch bundled service');
-        return;
+function getDefaultUserDataPath(): string {
+    if (process.platform === 'linux') {
+        return path.join(os.homedir(), '.config', 'Local');
     }
+    return path.join(os.homedir(), 'Library', 'Application Support', 'Local');
+}
 
+export default function main(context: any): void {
+    // Prefer userDataPath from context (cross-platform), fall back to OS default
+    const userDataPath: string =
+        context?.environment?.userDataPath || getDefaultUserDataPath();
+
+    console.log(`[local-addon-mariadb] userDataPath: ${userDataPath}`);
     patchBundledService(userDataPath);
 
     downloadBinaries(SERVICE_DIR).catch((err: Error) => {

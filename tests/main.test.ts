@@ -128,13 +128,9 @@ describe('patchBundledService via main()', () => {
         fs.chmodSync(targetFile, 0o644);
     });
 
-    it('logs error when no userDataPath in context', () => {
-        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
-        main({} as any);
-        expect(consoleSpy).toHaveBeenCalledWith(
-            expect.stringContaining('No userDataPath in context')
-        );
-        consoleSpy.mockRestore();
+    it('falls back to OS default path when context has no userDataPath', () => {
+        // Should not throw — uses OS default path fallback
+        expect(() => main({} as any)).not.toThrow();
     });
 
     it('starts binary download in background', () => {
