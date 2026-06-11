@@ -49,38 +49,6 @@ jobs:
           tar xzf mariadb.tar.gz
           mv mariadb-${VERSION} mariadb-src
 
-      - name: Patch CMake minimum version (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          # Homebrew cmake 4.x removed support for cmake_minimum_required(VERSION < 3.5).
-          # MariaDB 10.11+ uses VERSION 3.0. Use Python for reliable cross-platform patching.
-          python3 - << 'PYEOF'
-          import re, os
-
-          pattern = re.compile(
-              r'cmake_minimum_required\s*\(\s*VERSION\s+([0-2]\.\d+|3\.[0-4](\.\d+)?)\b'
-          )
-          replacement = 'cmake_minimum_required(VERSION 3.5'
-          patched = []
-
-          for root, dirs, files in os.walk('mariadb-src'):
-              for fname in files:
-                  if fname != 'CMakeLists.txt':
-                      continue
-                  path = os.path.join(root, fname)
-                  with open(path, 'r', errors='replace') as f:
-                      content = f.read()
-                  new_content = pattern.sub(replacement, content)
-                  if new_content != content:
-                      with open(path, 'w') as f:
-                          f.write(new_content)
-                      patched.append(path)
-
-          print(f"Patched {len(patched)} file(s):")
-          for p in patched[:10]:
-              print(f"  {p}")
-          PYEOF
-
       - name: Build MariaDB (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -90,6 +58,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
             -DCMAKE_INSTALL_PREFIX=$PWD/../install \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DWITH_SSL=bundled \
             -DWITH_ZLIB=bundled \
             -DWITHOUT_ROCKSDB=ON \
