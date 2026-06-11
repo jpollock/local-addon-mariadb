@@ -106,3 +106,33 @@ Binaries are built via GitHub Actions (`.github/workflows/build-mariadb.yml`):
 6. Upload to GitHub Releases
 
 To publish a new MariaDB version: bump `MARIADB_VERSION` in `src/constants.ts`, trigger the workflow, upload artifacts to a new GitHub Release, update `package.json` version.
+
+## Multi-Version Support
+
+### Adding a New MariaDB Version
+
+To add a new version (e.g. 11.4.x), edit `src/constants.ts`:
+
+```typescript
+export const SUPPORTED_VERSIONS: ServiceVersion[] = [
+    { version: '10.6.23',  bundled: true  },
+    { version: '10.11.11', bundled: false },
+    { version: '11.4.2',   bundled: false }, // add here
+];
+```
+
+Then build the binaries using the CI workflow (`workflow_dispatch` with the new version), create a GitHub Release, and upload the artifacts.
+
+### Bundled vs. Created Service Directories
+
+**Bundled (10.6.23):** Local ships this version as a Windows-only service. At startup, the addon patches `lightning-services/mariadb-10.6.23+0/lib/MariadbService.js` with the cross-platform version and symlinks `bin/` to the addon's downloaded binaries.
+
+**Non-bundled (10.11.11+):** The addon creates the entire service directory from scratch in `lightning-services/mariadb-{version}+0/`:
+- `package.json` — generated with the correct version tag
+- `lib/main.js` — generated; reads `MARIADB_VERSION` from `./constants` at runtime
+- `lib/constants.js` — generated with `MARIADB_VERSION = '{version}'`
+- `lib/MariadbService.js` — copied from the addon's `lib/` (same class for all versions)
+- `conf/my.cnf.hbs` — copied from the addon's `conf/`
+- `bin/{platform}/bin/` — pre-created empty stubs so `getPlatformFromService()` can detect the platform and list the version in the dropdown before download completes
+
+Binaries are downloaded into `lightning-services/mariadb-{version}+0/bin/{platform}/` (the service directory itself is the download destination for non-bundled versions).

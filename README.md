@@ -2,19 +2,26 @@
 
 A [Local by Flywheel](https://localwp.com) addon that adds **MariaDB 10.6.23** as a database option when creating WordPress sites.
 
+## Supported MariaDB Versions
+
+| Version | Status | Notes |
+|---------|--------|-------|
+| 10.6.23 | ✅ Stable | Bundled with Local; patched on startup |
+| 10.11.11 (LTS) | ✅ Stable | Downloaded on first use (~25 MB) |
+
 ## Platform Support
 
 | Platform | Status |
 |----------|--------|
-| macOS Apple Silicon (arm64) | ✅ Supported |
+| macOS Apple Silicon (arm64) | ✅ Both versions |
 | macOS Intel (x86_64) | 🔄 Coming soon |
-| Linux (x86_64) | ✅ Supported |
-| Windows | ❌ Not supported (Local's built-in MariaDB handles Windows) |
+| Linux (x86_64) | ✅ Both versions |
+| Windows | ❌ Not supported |
 
 ## Requirements
 
 - [Local](https://localwp.com) 9.0.0 or later
-- Internet connection (binaries downloaded on first use, ~25 MB)
+- Internet connection (binaries downloaded on first use for 10.11.11)
 - macOS or Linux (see platform table above)
 
 ## Installation
