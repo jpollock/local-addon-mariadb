@@ -1,4 +1,4 @@
-import { getPlatform, getBinaryUrl, hasBinaries } from '../src/downloader';
+import { getPlatform, getBinaryUrl, getChecksumUrl, hasBinaries } from '../src/downloader';
 import fs from 'fs-extra';
 import path from 'path';
 import os from 'os';
@@ -48,6 +48,15 @@ describe('getBinaryUrl', () => {
         const url = getBinaryUrl('linux', '10.6.23');
         expect(url).toBe(
             'https://github.com/jpollock/local-addon-mariadb/releases/download/v10.6.23/bin-linux-10.6.23.tar.gz'
+        );
+    });
+});
+
+describe('getChecksumUrl', () => {
+    it('appends .sha256 to the binary URL', () => {
+        const url = getChecksumUrl('darwin-arm64', '10.6.23');
+        expect(url).toBe(
+            'https://github.com/jpollock/local-addon-mariadb/releases/download/v10.6.23/bin-darwin-arm64-10.6.23.tar.gz.sha256'
         );
     });
 });

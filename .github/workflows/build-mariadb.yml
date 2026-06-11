@@ -207,9 +207,19 @@ jobs:
           echo "Init strategy: $INIT_STRATEGY"
           echo "Built: $TARNAME ($(ls -lh $TARNAME | awk '{print $5}'))"
 
+      - name: Generate checksum
+        run: |
+          VERSION=${{ inputs.mariadb_version }}
+          PLATFORM=${{ matrix.platform }}
+          TARNAME="bin-${PLATFORM}-${VERSION}.tar.gz"
+          shasum -a 256 "$TARNAME" > "${TARNAME}.sha256"
+          cat "${TARNAME}.sha256"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: mariadb-${{ inputs.mariadb_version }}-${{ matrix.platform }}
-          path: bin-${{ matrix.platform }}-${{ inputs.mariadb_version }}.tar.gz
+          path: |
+            bin-${{ matrix.platform }}-${{ inputs.mariadb_version }}.tar.gz
+            bin-${{ matrix.platform }}-${{ inputs.mariadb_version }}.tar.gz.sha256
           retention-days: 7
