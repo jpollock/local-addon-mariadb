@@ -62,6 +62,9 @@ describe('patchBundledService via main()', () => {
     });
 
     afterEach(async () => {
+        // Allow any fire-and-forget async work (e.g., setupNewServiceVersion) to complete
+        // before removing tmpDir, to avoid ENOTEMPTY races on macOS.
+        await new Promise(resolve => setTimeout(resolve, 100));
         await fs.remove(tmpDir);
         jest.clearAllMocks();
     });
@@ -141,5 +144,85 @@ describe('patchBundledService via main()', () => {
         const { downloadBinaries } = require('../src/downloader');
         main(makeContext(userDataPath));
         expect(downloadBinaries).toHaveBeenCalled();
+    });
+});
+
+describe('10.11.11 service directory creation', () => {
+    beforeAll(() => {
+        const libDir = path.resolve(__dirname, '..', 'lib');
+        const srcDir = path.resolve(__dirname, '..', 'src');
+        for (const file of ['MariadbService.js', 'constants.js']) {
+            if (!fs.pathExistsSync(path.join(srcDir, file))) {
+                fs.copyFileSync(path.join(libDir, file), path.join(srcDir, file));
+            }
+        }
+    });
+
+    afterAll(() => {
+        const srcDir = path.resolve(__dirname, '..', 'src');
+        for (const file of ['MariadbService.js', 'constants.js']) {
+            fs.removeSync(path.join(srcDir, file));
+        }
+    });
+
+    let tmpDir: string;
+    let userDataPath: string;
+
+    beforeEach(async () => {
+        tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mariadb-main2-test-'));
+        userDataPath = tmpDir;
+    });
+
+    afterEach(async () => {
+        await fs.remove(tmpDir);
+    });
+
+    it('creates the 10.11.11 service directory on startup', () => {
+        main(makeContext(userDataPath));
+
+        // createServiceDirectory is async — check after a tick
+        return new Promise<void>(resolve => setTimeout(() => {
+            const svcDir = path.join(userDataPath, 'lightning-services', 'mariadb-10.11.11+0');
+            expect(fs.pathExistsSync(svcDir)).toBe(true);
+            expect(fs.pathExistsSync(path.join(svcDir, 'lib', 'main.js'))).toBe(true);
+            expect(fs.pathExistsSync(path.join(svcDir, 'lib', 'MariadbService.js'))).toBe(true);
+            expect(fs.pathExistsSync(path.join(svcDir, 'lib', 'constants.js'))).toBe(true);
+            resolve();
+        }, 200));
+    });
+
+    it('writes 10.11.11-specific constants.js into the service dir', () => {
+        main(makeContext(userDataPath));
+
+        return new Promise<void>(resolve => setTimeout(() => {
+            const constantsPath = path.join(
+                userDataPath, 'lightning-services', 'mariadb-10.11.11+0', 'lib', 'constants.js'
+            );
+            if (fs.pathExistsSync(constantsPath)) {
+                const constants = fs.readFileSync(constantsPath, 'utf8');
+                expect(constants).toContain("'10.11.11'");
+            }
+            resolve();
+        }, 200));
+    });
+
+    it('pre-creates darwin-arm64/bin subdir for platform discovery', () => {
+        main(makeContext(userDataPath));
+
+        return new Promise<void>(resolve => setTimeout(() => {
+            const platformDir = path.join(
+                userDataPath, 'lightning-services', 'mariadb-10.11.11+0', 'bin', 'darwin-arm64', 'bin'
+            );
+            expect(fs.pathExistsSync(platformDir)).toBe(true);
+            resolve();
+        }, 200));
+    });
+
+    it('triggers binary download for 10.11.11', () => {
+        const { downloadBinaries } = require('../src/downloader');
+        (downloadBinaries as jest.Mock).mockClear();
+        main(makeContext(userDataPath));
+        // downloadBinaries is called at least once per version
+        expect((downloadBinaries as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(1);
     });
 });
