@@ -1,1 +1,4 @@
-bin-darwin-arm64-*.tar.gz
+node_modules/
+lib/
+bin/
+*.tar.gz

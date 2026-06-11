@@ -1,0 +1,57 @@
+{
+  "name": "local-addon-mariadb",
+  "productName": "MariaDB for Local",
+  "version": "0.1.0",
+  "description": "Adds MariaDB 10.6.23 support to Local on macOS and Linux",
+  "author": "Jeremy Pollock",
+  "license": "MIT",
+  "main": "lib/main.js",
+  "tags": [
+    "local-lightning-service",
+    "local-site-service"
+  ],
+  "local": {
+    "hidden": false
+  },
+  "localAddon": {
+    "minimumLocalVersion": "9.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "install-addon": "node scripts/install-addon.js"
+  },
+  "dependencies": {
+    "delay": "^4.3.0",
+    "fs-extra": "^10.1.0",
+    "node-fetch": "^2.7.0",
+    "slash": "^3.0.0",
+    "tar": "^6.2.0"
+  },
+  "bundleDependencies": [
+    "delay",
+    "fs-extra",
+    "node-fetch",
+    "slash",
+    "tar"
+  ],
+  "devDependencies": {
+    "@getflywheel/local": "^9.2.6",
+    "@types/fs-extra": "^11.0.4",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.0.0",
+    "@types/node-fetch": "^2.6.11",
+    "@types/tar": "^6.1.13",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^4.9.5"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["**/tests/**/*.test.ts"],
+    "moduleNameMapper": {
+      "@getflywheel/local/main": "<rootDir>/tests/__mocks__/local-main.ts"
+    }
+  }
+}
