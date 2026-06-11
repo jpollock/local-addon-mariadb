@@ -37,23 +37,22 @@ export async function hasBinaries(serviceDir: string, platform: string): Promise
     return fs.pathExists(mysqldPath);
 }
 
-export async function downloadBinaries(serviceDir: string): Promise<void> {
+export async function downloadBinaries(serviceDir: string, version: string = MARIADB_VERSION): Promise<void> {
     const platform = getPlatform();
     if (!platform) return;
 
     if (await hasBinaries(serviceDir, platform)) return;
 
-    const url = getBinaryUrl(platform, MARIADB_VERSION);
-    const checksumUrl = getChecksumUrl(platform, MARIADB_VERSION);
+    const url = getBinaryUrl(platform, version);
+    const checksumUrl = getChecksumUrl(platform, version);
     const destDir = path.join(serviceDir, 'bin', platform);
     const tmpFile = path.join(serviceDir, `bin-${platform}.tar.gz`);
 
     await fs.ensureDir(destDir);
 
-    // Download tarball
     const response = await fetch(url);
     if (!response.ok) {
-        throw new Error(`Failed to download MariaDB binaries (${response.status}): ${url}`);
+        throw new Error(`Failed to download MariaDB ${version} binaries (${response.status}): ${url}`);
     }
 
     try {
@@ -68,19 +67,16 @@ export async function downloadBinaries(serviceDir: string): Promise<void> {
             fileStream.on('error', reject);
         });
 
-        // Download and verify checksum
         const checksumResponse = await fetch(checksumUrl);
         if (checksumResponse.ok) {
             const checksumContent = await checksumResponse.text();
             await verifyChecksum(tmpFile, checksumContent);
         } else {
-            // Checksum file not found (e.g. older releases) — warn but don't fail
-            console.warn(`[local-addon-mariadb] Checksum file not available (${checksumResponse.status}), skipping verification`);
+            console.warn(`[local-addon-mariadb] Checksum not available for ${version} (${checksumResponse.status})`);
         }
 
         await tar.extract({ file: tmpFile, cwd: destDir });
     } finally {
-        // Always clean up the temp file, even on failure
         await fs.remove(tmpFile).catch(() => {});
     }
 }

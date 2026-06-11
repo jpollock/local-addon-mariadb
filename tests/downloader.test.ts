@@ -77,3 +77,18 @@ describe('hasBinaries', () => {
         await fs.remove(tmpDir);
     });
 });
+
+describe('downloadBinaries with explicit version', () => {
+    it('uses the correct URL for 10.11.11', () => {
+        const url = getBinaryUrl('darwin-arm64', '10.11.11');
+        expect(url).toContain('/v10.11.11/');
+        expect(url).toContain('bin-darwin-arm64-10.11.11.tar.gz');
+    });
+
+    it('hasBinaries returns false when darwin-arm64 dir exists but mysqld missing', async () => {
+        const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mariadb-v2-'));
+        await fs.ensureDir(path.join(tmpDir, 'bin', 'darwin-arm64', 'bin'));
+        expect(await hasBinaries(tmpDir, 'darwin-arm64')).toBe(false);
+        await fs.remove(tmpDir);
+    });
+});
