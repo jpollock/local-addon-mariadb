@@ -94,3 +94,46 @@ export async function createServiceDirectory(
         await fs.ensureDir(path.join(serviceDir, 'bin', platform, 'bin'));
     }
 }
+
+/**
+ * Synchronous version of createServiceDirectory.
+ *
+ * MUST be used from the addon's main() function. Local's loadAddonsInRepos()
+ * scans lightning-services/ synchronously immediately after addons/ are loaded.
+ * If we create the service directory asynchronously, it won't exist yet when
+ * Local scans for it, so the version never appears in the database dropdown.
+ */
+export function createServiceDirectorySync(
+    serviceDir: string,
+    version: string,
+    addonLibDir: string,
+    addonConfDir: string,
+): void {
+    fs.ensureDirSync(path.join(serviceDir, 'lib'));
+    fs.ensureDirSync(path.join(serviceDir, 'conf'));
+
+    fs.writeJsonSync(
+        path.join(serviceDir, 'package.json'),
+        generatePackageJson(version),
+        { spaces: 4 },
+    );
+
+    fs.writeFileSync(path.join(serviceDir, 'lib', 'main.js'), generateMainJs());
+    fs.writeFileSync(path.join(serviceDir, 'lib', 'constants.js'), generateConstantsJs(version));
+
+    fs.copySync(
+        path.join(addonLibDir, 'MariadbService.js'),
+        path.join(serviceDir, 'lib', 'MariadbService.js'),
+        { overwrite: true },
+    );
+
+    fs.copySync(
+        path.join(addonConfDir, 'my.cnf.hbs'),
+        path.join(serviceDir, 'conf', 'my.cnf.hbs'),
+        { overwrite: true },
+    );
+
+    for (const platform of ['darwin-arm64', 'darwin', 'linux']) {
+        fs.ensureDirSync(path.join(serviceDir, 'bin', platform, 'bin'));
+    }
+}

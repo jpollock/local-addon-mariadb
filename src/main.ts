@@ -3,7 +3,7 @@ import os from 'os';
 import fs from 'fs-extra';
 import { downloadBinaries } from './downloader';
 import { MARIADB_VERSION, SUPPORTED_VERSIONS } from './constants';
-import { createServiceDirectory } from './serviceTemplate';
+import { createServiceDirectorySync } from './serviceTemplate';
 
 const SERVICE_DIR = path.join(__dirname, '..');
 const ADDON_LIB_DIR = __dirname;                      // compiled lib/ files live here
@@ -53,19 +53,22 @@ function patchBundledService(userDataPath: string): void {
     }
 }
 
-/** For non-bundled versions: create the full service directory, then download binaries. */
-async function setupNewServiceVersion(userDataPath: string, version: string): Promise<void> {
+/** For non-bundled versions: create the service directory synchronously (so Local finds
+ *  it when it scans lightning-services/ immediately after), then download binaries async. */
+function setupNewServiceVersion(userDataPath: string, version: string): void {
     const serviceName = `mariadb-${version}+0`;
     const serviceDir = path.join(userDataPath, 'lightning-services', serviceName);
 
     try {
-        await createServiceDirectory(serviceDir, version, ADDON_LIB_DIR, ADDON_CONF_DIR);
+        // SYNC: must complete before main() returns so Local sees the directory
+        createServiceDirectorySync(serviceDir, version, ADDON_LIB_DIR, ADDON_CONF_DIR);
         console.log(`[local-addon-mariadb] Ensured service directory for ${serviceName}`);
     } catch (err: any) {
         console.error(`[local-addon-mariadb] Failed to create service dir for ${serviceName}:`, err.message);
         return;
     }
 
+    // ASYNC: download binaries in background after directory is ready
     downloadBinaries(serviceDir, version).catch((err: Error) => {
         console.error(`[local-addon-mariadb] Failed to download binaries for ${version}:`, err.message);
     });
@@ -81,7 +84,6 @@ export default function main(context: any): void {
         if (bundled) {
             patchBundledService(userDataPath);
         } else {
-            // Fire-and-forget — errors caught inside setupNewServiceVersion
             setupNewServiceVersion(userDataPath, version);
         }
     }
