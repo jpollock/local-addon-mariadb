@@ -17,8 +17,11 @@ const SERVICE_NAME = `mariadb-${MARIADB_VERSION}+0`;
 // The real MariadbService.js lives in lib/ (built output).
 // We temporarily place a copy at src/MariadbService.js so fs.copySync can find it.
 const SRC_DIR = path.resolve(__dirname, '..', 'src');
-const LIB_MARIADB_JS = path.resolve(__dirname, '..', 'lib', 'MariadbService.js');
+const LIB_DIR = path.resolve(__dirname, '..', 'lib');
+const LIB_MARIADB_JS = path.join(LIB_DIR, 'MariadbService.js');
+const LIB_CONSTANTS_JS = path.join(LIB_DIR, 'constants.js');
 const SRC_MARIADB_JS = path.join(SRC_DIR, 'MariadbService.js');
+const SRC_CONSTANTS_JS = path.join(SRC_DIR, 'constants.js');
 
 function makeContext(userDataPath: string): any {
     return { environment: { userDataPath } };
@@ -30,18 +33,19 @@ describe('patchBundledService via main()', () => {
     let lightningServiceDir: string;
 
     beforeAll(() => {
-        // Place the built MariadbService.js in src/ so patchBundledService can copy it.
-        // ts-jest resolves __dirname to the source directory, not lib/.
+        // ts-jest resolves __dirname to src/. patchBundledService copies from __dirname,
+        // so we temporarily place built files in src/ for the duration of the tests.
         if (!fs.pathExistsSync(SRC_MARIADB_JS)) {
             fs.copyFileSync(LIB_MARIADB_JS, SRC_MARIADB_JS);
+        }
+        if (!fs.pathExistsSync(SRC_CONSTANTS_JS)) {
+            fs.copyFileSync(LIB_CONSTANTS_JS, SRC_CONSTANTS_JS);
         }
     });
 
     afterAll(() => {
-        // Remove the temporary file we placed in src/
-        if (fs.pathExistsSync(SRC_MARIADB_JS)) {
-            fs.removeSync(SRC_MARIADB_JS);
-        }
+        fs.removeSync(SRC_MARIADB_JS);
+        fs.removeSync(SRC_CONSTANTS_JS);
     });
 
     beforeEach(async () => {
