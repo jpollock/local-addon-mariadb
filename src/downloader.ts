@@ -2,9 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import fetch from 'node-fetch';
 import tar from 'tar';
-
-const GITHUB_REPO = 'jpollock/local-addon-mariadb';
-const MARIADB_VERSION = '10.6.23';
+import { MARIADB_VERSION, GITHUB_REPO } from './constants';
 
 export function getPlatform(): string | null {
     if (process.platform === 'darwin' && process.arch === 'arm64') return 'darwin-arm64';
@@ -39,13 +37,21 @@ export async function downloadBinaries(serviceDir: string): Promise<void> {
         throw new Error(`Failed to download MariaDB binaries (${response.status}): ${url}`);
     }
 
-    await new Promise<void>((resolve, reject) => {
-        const fileStream = fs.createWriteStream(tmpFile);
-        response.body!.pipe(fileStream);
-        response.body!.on('error', reject);
-        fileStream.on('finish', resolve);
-    });
+    try {
+        await new Promise<void>((resolve, reject) => {
+            const fileStream = fs.createWriteStream(tmpFile);
+            response.body!.pipe(fileStream);
+            response.body!.on('error', (err) => {
+                fileStream.destroy();
+                reject(err);
+            });
+            fileStream.on('finish', resolve);
+            fileStream.on('error', reject);
+        });
 
-    await tar.extract({ file: tmpFile, cwd: destDir });
-    await fs.remove(tmpFile);
+        await tar.extract({ file: tmpFile, cwd: destDir });
+    } finally {
+        // Always clean up the temp file, even on failure
+        await fs.remove(tmpFile).catch(() => {});
+    }
 }

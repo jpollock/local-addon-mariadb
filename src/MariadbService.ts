@@ -3,10 +3,11 @@ import path from 'path';
 import slash from 'slash';
 import fs from 'fs-extra';
 import delay from 'delay';
+import { MARIADB_VERSION } from './constants';
 
 export default class MariadbService extends LocalMain.LightningService {
     serviceName = 'mariadb';
-    binVersion = '10.6.23';
+    binVersion = MARIADB_VERSION;
 
     get configTemplatePath(): string {
         return path.join(__dirname, '../conf');

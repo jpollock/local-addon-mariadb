@@ -4,8 +4,20 @@ const fs = require('fs-extra');
 const path = require('path');
 const os = require('os');
 
+// Detect platform
+const platform = os.platform();
+let localDataPath;
+if (platform === 'darwin') {
+    localDataPath = path.join(os.homedir(), 'Library', 'Application Support', 'Local');
+} else if (platform === 'linux') {
+    localDataPath = path.join(os.homedir(), '.config', 'Local');
+} else {
+    console.error('Unsupported platform for symlink install:', platform);
+    process.exit(1);
+}
+
 const ADDON_NAME = 'local-addon-mariadb';
-const ADDONS_DIR = path.join(os.homedir(), 'Library/Application Support/Local/addons');
+const ADDONS_DIR = path.join(localDataPath, 'addons');
 const LINK = path.join(ADDONS_DIR, ADDON_NAME);
 const TARGET = path.resolve(__dirname, '..');
 

@@ -23,7 +23,7 @@
     "slash": "^3.0.0",
     "tar": "^6.2.0"
   },
-  "bundleDependencies": [
+  "bundledDependencies": [
     "delay",
     "fs-extra",
     "node-fetch",

@@ -1,36 +1,30 @@
 import path from 'path';
-import os from 'os';
 import fs from 'fs-extra';
 import { downloadBinaries } from './downloader';
+import { MARIADB_VERSION } from './constants';
 
 const SERVICE_DIR = path.join(__dirname, '..');
+const SERVICE_NAME = `mariadb-${MARIADB_VERSION}+0`;
 
-// The bundled lightning-services/mariadb-10.6.23+0 loads AFTER this addon and
-// overwrites any registerLightningService call we make. Instead, we patch its
-// MariadbService.js with our cross-platform version before it gets loaded.
-// The lightning service then registers our version.
-const LIGHTNING_SERVICE_DIR = path.join(
-    os.homedir(),
-    'Library/Application Support/Local/lightning-services/mariadb-10.6.23+0'
-);
+function patchBundledService(userDataPath: string): void {
+    const lightningServiceDir = path.join(
+        userDataPath, 'lightning-services', SERVICE_NAME
+    );
 
-function patchBundledService(): void {
     try {
-        if (!fs.pathExistsSync(LIGHTNING_SERVICE_DIR)) return;
+        if (!fs.pathExistsSync(lightningServiceDir)) return;
 
-        // 1. Replace MariadbService.js with cross-platform version
+        // Replace MariadbService.js with cross-platform version
         fs.copySync(
             path.join(__dirname, 'MariadbService.js'),
-            path.join(LIGHTNING_SERVICE_DIR, 'lib', 'MariadbService.js'),
+            path.join(lightningServiceDir, 'lib', 'MariadbService.js'),
             { overwrite: true }
         );
 
-        // 2. Symlink lightning-services/mariadb-10.6.23+0/bin → addon's bin/
-        //    getPlatformFromService() scans this dir to detect available platforms.
-        //    Our patched MariadbService.$PATHs uses __dirname relative paths which
-        //    resolve to lightning-services/.../bin/{platform}/bin when loaded from there.
-        const lightningBinDir = path.join(LIGHTNING_SERVICE_DIR, 'bin');
-        const addonBinDir = SERVICE_DIR + '/bin';
+        // Symlink lightning-services/mariadb-{ver}/bin → addon's bin/
+        // getPlatformFromService() scans this dir to detect available platforms.
+        const lightningBinDir = path.join(lightningServiceDir, 'bin');
+        const addonBinDir = path.join(SERVICE_DIR, 'bin');
 
         if (fs.pathExistsSync(lightningBinDir)) {
             const stat = fs.lstatSync(lightningBinDir);
@@ -47,12 +41,15 @@ function patchBundledService(): void {
     }
 }
 
-export default function main(_context: any): void {
-    // Patch the bundled lightning service's MariadbService.js with our cross-platform
-    // version before AddonLoaderService loads it. Order guaranteed: addons/ loads first.
-    patchBundledService();
+export default function main(context: any): void {
+    const userDataPath: string = context?.environment?.userDataPath ?? '';
+    if (!userDataPath) {
+        console.error('[local-addon-mariadb] No userDataPath in context — cannot patch bundled service');
+        return;
+    }
 
-    // Download platform binaries in the background
+    patchBundledService(userDataPath);
+
     downloadBinaries(SERVICE_DIR).catch((err: Error) => {
         console.error('[local-addon-mariadb] Failed to download binaries:', err.message);
     });
