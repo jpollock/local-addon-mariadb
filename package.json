@@ -6,15 +6,10 @@
   "author": "Jeremy Pollock",
   "license": "MIT",
   "main": "lib/main.js",
-  "tags": [
-    "local-lightning-service",
-    "local-site-service"
-  ],
-  "local": {
-    "hidden": false
-  },
   "localAddon": {
-    "minimumLocalVersion": "9.0.0"
+    "minimumLocalVersion": "9.0.0",
+    "type": "addon",
+    "category": "developer-tools"
   },
   "scripts": {
     "build": "tsc",

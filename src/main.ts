@@ -5,14 +5,14 @@ import { downloadBinaries } from './downloader';
 
 const SERVICE_DIR = path.join(__dirname, '..');
 
-export default async function main(): Promise<void> {
-    try {
-        await downloadBinaries(SERVICE_DIR);
-    } catch (err: any) {
-        // Log but don't crash — service will fail gracefully if binaries are missing
-        // rather than preventing Local from starting entirely
-        console.error('[local-addon-mariadb] Failed to download binaries:', err.message);
-    }
-
+// Local calls `new AddonClass(context)` — export a constructor function, not async
+export default function main(_context: any): void {
+    // Register the service immediately so it appears in the database selector
     registerLightningService(MariadbService, 'mariadb', '10.6.23');
+
+    // Download binaries in the background — non-blocking
+    // If binaries aren't ready when a site is created, preprovision() will fail gracefully
+    downloadBinaries(SERVICE_DIR).catch((err: Error) => {
+        console.error('[local-addon-mariadb] Failed to download binaries:', err.message);
+    });
 }
