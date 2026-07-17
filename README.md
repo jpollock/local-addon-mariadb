@@ -1,6 +1,6 @@
 # MariaDB for Local
 
-A [Local by Flywheel](https://localwp.com) addon that adds **MariaDB 10.6.23** as a database option when creating WordPress sites.
+An addon for [Local by WP Engine](https://localwp.com) that adds MariaDB as a database option when creating WordPress sites.
 
 ## Supported MariaDB Versions
 
