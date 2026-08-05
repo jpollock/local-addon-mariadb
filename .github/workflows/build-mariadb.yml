@@ -270,3 +270,42 @@ jobs:
             bin-${{ matrix.platform }}-${{ inputs.mariadb_version }}.tar.gz
             bin-${{ matrix.platform }}-${{ inputs.mariadb_version }}.tar.gz.sha256
           retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: v${{ inputs.mariadb_version }}
+    steps:
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create draft release if absent
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — uploading into it."
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "MariaDB ${{ inputs.mariadb_version }}" \
+              --notes "Prebuilt MariaDB ${{ inputs.mariadb_version }} binaries for Local." \
+              --draft
+          fi
+
+      - name: Upload assets
+        run: gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber artifacts/*
+
+      - name: Verify asset count
+        run: |
+          COUNT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets | length')
+          echo "Release $TAG has $COUNT assets."
+          if [ "$COUNT" -ne 6 ]; then
+            echo "::error::Expected 6 assets (3 tarballs + 3 checksums), found $COUNT"
+            exit 1
+          fi
