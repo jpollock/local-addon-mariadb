@@ -657,3 +657,177 @@ git push
 ## Deferred
 
 Tracked in the design spec, not this plan: the addon `.tgz` release pipeline, the `0.1.0` vs v1.1 version reconciliation, and switching to `mariadb-*` binary names.
+
+---
+
+### Task 6: Make the bootstrap share-file lookup version-agnostic
+
+> **Execution order:** added mid-execution on 2026-08-05 after the 11.8.8 spike failed.
+> This task must run BEFORE Task 3's build step is retried, and before any of Task 4's
+> builds. It is numbered 6 only so the earlier task numbers already recorded in the
+> ledger stay stable.
+
+**Why:** MariaDB 11.x installs only `mariadb_system_tables.sql` and
+`mariadb_system_tables_data.sql` into `share/`. The `mysql_*` names are absent entirely.
+`bootstrapDatadir()` hardcodes the `mysql_*` names, so it throws ENOENT at site creation
+on every 11.x/12.x build. 10.x still ships the `mysql_*` names, so both layouts must work
+from one code path — `MariadbService.js` is copied into every service directory.
+
+**Files:**
+- Modify: `src/MariadbService.ts:106-122` (`bootstrapDatadir`)
+- Modify: `.github/workflows/build-mariadb.yml` (smoke test SQL concatenation)
+- Test: `tests/MariadbService.test.ts`
+
+**Interfaces:**
+- Consumes: nothing from earlier tasks.
+- Produces: `bootstrapDatadir()` resolving share SQL files under either naming scheme.
+  Tasks 3 and 4 depend on this for every 11.x/12.x build.
+
+- [ ] **Step 1: Write the failing tests**
+
+Add to `tests/MariadbService.test.ts`:
+
+```typescript
+describe('share SQL file resolution', () => {
+    const os = require('os');
+    const fsExtra = require('fs-extra');
+    const pathMod = require('path');
+
+    function makeShareDir(files: Record<string, string>): string {
+        const dir = fsExtra.mkdtempSync(pathMod.join(os.tmpdir(), 'mariadb-share-'));
+        for (const [name, body] of Object.entries(files)) {
+            fsExtra.writeFileSync(pathMod.join(dir, name), body);
+        }
+        return dir;
+    }
+
+    it('resolves the MariaDB 11.x layout (mariadb_* names)', () => {
+        const dir = makeShareDir({
+            'mariadb_system_tables.sql': '-- 11x tables',
+            'mariadb_system_tables_data.sql': '-- 11x data',
+        });
+        const { resolveShareSql } = require('../src/MariadbService');
+        expect(resolveShareSql(dir, 'system_tables')).toBe('-- 11x tables');
+        expect(resolveShareSql(dir, 'system_tables_data')).toBe('-- 11x data');
+        fsExtra.removeSync(dir);
+    });
+
+    it('resolves the MariaDB 10.x layout (mysql_* names)', () => {
+        const dir = makeShareDir({
+            'mysql_system_tables.sql': '-- 10x tables',
+            'mysql_system_tables_data.sql': '-- 10x data',
+        });
+        const { resolveShareSql } = require('../src/MariadbService');
+        expect(resolveShareSql(dir, 'system_tables')).toBe('-- 10x tables');
+        expect(resolveShareSql(dir, 'system_tables_data')).toBe('-- 10x data');
+        fsExtra.removeSync(dir);
+    });
+
+    it('prefers mariadb_* when both are present', () => {
+        const dir = makeShareDir({
+            'mariadb_system_tables.sql': '-- preferred',
+            'mysql_system_tables.sql': '-- legacy',
+        });
+        const { resolveShareSql } = require('../src/MariadbService');
+        expect(resolveShareSql(dir, 'system_tables')).toBe('-- preferred');
+        fsExtra.removeSync(dir);
+    });
+
+    it('throws a diagnostic error naming both candidates when neither exists', () => {
+        const dir = makeShareDir({ 'unrelated.sql': '' });
+        const { resolveShareSql } = require('../src/MariadbService');
+        expect(() => resolveShareSql(dir, 'system_tables')).toThrow(/mariadb_system_tables\.sql/);
+        expect(() => resolveShareSql(dir, 'system_tables')).toThrow(/mysql_system_tables\.sql/);
+        fsExtra.removeSync(dir);
+    });
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+```bash
+npm run build && npx jest tests/MariadbService.test.ts -t "share SQL file resolution" -v
+```
+
+Expected: FAIL — `resolveShareSql is not a function`.
+
+- [ ] **Step 3: Implement**
+
+In `src/MariadbService.ts`, add this exported function at module scope, after the imports
+and before the class declaration:
+
+```typescript
+/**
+ * Reads a share/ SQL init file, tolerating both naming schemes.
+ * MariaDB 11.x installs only mariadb_*.sql; 10.x installs only mysql_*.sql.
+ * `base` is the stem, e.g. 'system_tables' or 'system_tables_data'.
+ */
+export function resolveShareSql(shareDir: string, base: string): string {
+    const candidates = [`mariadb_${base}.sql`, `mysql_${base}.sql`];
+    for (const name of candidates) {
+        const candidate = path.join(shareDir, name);
+        if (fs.pathExistsSync(candidate)) {
+            return fs.readFileSync(candidate, 'utf8');
+        }
+    }
+    throw new Error(
+        `MariaDB bootstrap: found neither ${candidates.join(' nor ')} in ${shareDir}`
+    );
+}
+```
+
+Then in `bootstrapDatadir()`, replace the two `fs.readFileSync` calls:
+
+```typescript
+        const systemTables = resolveShareSql(shareDir, 'system_tables');
+        const systemData = resolveShareSql(shareDir, 'system_tables_data');
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+```bash
+npm run build && npm test
+```
+
+Expected: all tests pass, including the four new ones.
+
+- [ ] **Step 5: Apply the same fallback in the CI smoke test**
+
+In `.github/workflows/build-mariadb.yml`, inside the smoke-test step, replace the two
+`cat install/share/mysql_*.sql` lines with a resolver. Insert before the `{ ... } > "$SMOKE/init.sql"`
+block:
+
+```bash
+          pick_sql() {
+            for n in "install/share/mariadb_$1.sql" "install/share/mysql_$1.sql"; do
+              [ -f "$n" ] && { echo "$n"; return 0; }
+            done
+            echo "::error::neither mariadb_$1.sql nor mysql_$1.sql found in install/share" >&2
+            return 1
+          }
+          TABLES_SQL=$(pick_sql system_tables) || exit 1
+          DATA_SQL=$(pick_sql system_tables_data) || exit 1
+          echo "Using $TABLES_SQL and $DATA_SQL"
+```
+
+Then change `cat install/share/mysql_system_tables.sql` to `cat "$TABLES_SQL"` and
+`cat install/share/mysql_system_tables_data.sql` to `cat "$DATA_SQL"`.
+
+- [ ] **Step 6: Validate the YAML parses**
+
+```bash
+ruby -ryaml -e "YAML.load_file('.github/workflows/build-mariadb.yml'); puts 'YAML OK'"
+```
+
+Expected: `YAML OK`
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/MariadbService.ts tests/MariadbService.test.ts .github/workflows/build-mariadb.yml
+git commit -m "fix: resolve share SQL init files under both mariadb_* and mysql_* names"
+```
+
+**Regression note for the controller:** `MariadbService.js` is copied into every service
+directory, including the working 10.6.23 and 10.11.11 ones. After this task, the 10.6.23
+path must be re-verified in Local before the branch is considered done.

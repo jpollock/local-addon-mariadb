@@ -115,10 +115,19 @@ The asset-count check is the direct guard against the v10.6.23 defect: a release
 
 ## Risks
 
+**Confirmed during the 11.8.8 spike (2026-08-05) — BLOCKER, corrects an earlier clearance:**
+
+MariaDB 11.x installs only `mariadb_system_tables.sql` and `mariadb_system_tables_data.sql` into `share/`. The `mysql_*` names are not installed at all — not as files, not as symlinks. Verified against build run 31051602264 (zero `-- Installing:` lines for the `mysql_*` names) and against `scripts/CMakeLists.txt` at tag `mariadb-11.8.8`, which installs only the `mariadb_*` names into `INSTALL_MYSQLSHAREDIR`.
+
+`src/MariadbService.ts:110-111` hardcodes the `mysql_*` names, so `bootstrapDatadir()` throws ENOENT at site creation on every 11.x/12.x build. This affects the addon's real runtime path, not just CI. 10.x is unaffected — it still ships the `mysql_*` names.
+
+This invalidates the original clearance below, which checked the SQL *statements* but never checked that the SQL *files* still existed under those names. Resolution: read `mariadb_*` first and fall back to `mysql_*`, in both `bootstrapDatadir()` and the CI smoke test. Tracked as Task 6 in the implementation plan, which must run before any 11.x build is attempted.
+
 **Cleared during design:**
 
-- `PASSWORD()` and `mysql_native_password` both remain functional in MariaDB 11.8 and 12.3. The removals commonly cited belong to MySQL 8.0/9.0. The bootstrap SQL is safe.
+- `PASSWORD()` and `mysql_native_password` both remain functional in MariaDB 11.8 and 12.3. The removals commonly cited belong to MySQL 8.0/9.0. **Still unverified in practice** — the 11.8.8 bootstrap failed on the missing share file before reaching the `PASSWORD()` statement.
 - The `mysql_install_db` → `mariadb-install-db` rename does not apply: on macOS and Linux the addon bypasses that tool entirely and pipes SQL into `mysqld --bootstrap`.
+- The "Deprecated program name" warning on 11.x is cosmetic — observed in run 31051602264 on stderr with `mysqld --version` still succeeding.
 
 **Open, to be characterised during the Phase 1 spike:**
 
