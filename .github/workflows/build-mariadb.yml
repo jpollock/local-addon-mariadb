@@ -159,10 +159,56 @@ jobs:
             [ -f "install/bin/$bin" ] && strip -S "install/bin/$bin" || true
           done
 
-      - name: Smoke test — mysqld --version
+      - name: Smoke test — bootstrap datadir and start server
         run: |
+          set -uo pipefail
           MYSQLD=$([ -f ./install/bin/mysqld ] && echo ./install/bin/mysqld || echo ./install/bin/mariadbd)
-          $MYSQLD --version
+          "$MYSQLD" --version
+
+          SMOKE="$PWD/smoke"
+          mkdir -p "$SMOKE/data"
+
+          # Mirrors bootstrapDatadir() in src/MariadbService.ts
+          {
+            echo 'CREATE DATABASE IF NOT EXISTS mysql;'
+            echo 'USE mysql;'
+            cat install/share/mysql_system_tables.sql
+            echo 'USE mysql;'
+            cat install/share/mysql_system_tables_data.sql
+            echo "UPDATE mysql.global_priv SET priv=json_set(priv,'\$.plugin','mysql_native_password','\$.authentication_string',PASSWORD('root')) WHERE user='root' AND host='localhost';"
+            echo 'FLUSH PRIVILEGES;'
+          } > "$SMOKE/init.sql"
+
+          if ! "$MYSQLD" --no-defaults --bootstrap \
+                --datadir="$SMOKE/data" \
+                --basedir="$PWD/install" \
+                --socket="$SMOKE/bootstrap.sock" \
+                < "$SMOKE/init.sql"; then
+            echo "::error::bootstrap failed for ${{ inputs.mariadb_version }}"
+            exit 1
+          fi
+          echo "bootstrap succeeded"
+
+          "$MYSQLD" --no-defaults \
+            --datadir="$SMOKE/data" \
+            --basedir="$PWD/install" \
+            --socket="$SMOKE/mysqld.sock" \
+            --skip-networking &
+          MYSQLD_PID=$!
+
+          for i in $(seq 1 30); do
+            if ./install/bin/mysqladmin --socket="$SMOKE/mysqld.sock" \
+                 --user=root --password=root ping 2>/dev/null; then
+              echo "server responded to ping"
+              kill "$MYSQLD_PID" 2>/dev/null || true
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::server did not respond within 30s"
+          kill "$MYSQLD_PID" 2>/dev/null || true
+          exit 1
 
       - name: Ad-hoc sign binaries and dylibs (macOS only)
         if: runner.os == 'macOS'
