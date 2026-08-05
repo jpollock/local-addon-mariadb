@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Target versions, exact: `10.11.18`, `11.4.12`, `11.8.8`, `12.3.2`. `10.6.23` stays; `10.11.11` is removed from the array.
+- Target versions, exact: `10.11.18`, `11.4.12`, `11.8.8`, `12.3.2`. `10.6.23` stays. `10.11.11` is removed from the array **by the end of Task 4** — Task 3 deliberately leaves it in place so `tests/main.test.ts` keeps passing until Task 4 updates it. A Task 3 diff that still contains `10.11.11` is correct.
 - `ServiceVersion` gains no new fields. EOL status is documented in the README only — never in `productName`, which would disturb Local's `isAddonLoaded` dedup.
 - Never delete an existing `lightning-services/mariadb-*` directory. `main.ts` only creates and patches.
 - Binaries keep their legacy `mysql*` invocation names. Switching to `mariadb-*` is out of scope.
