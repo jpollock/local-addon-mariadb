@@ -5,6 +5,24 @@ import fs from 'fs-extra';
 import delay from 'delay';
 import { MARIADB_VERSION } from './constants';
 
+/**
+ * Reads a share/ SQL init file, tolerating both naming schemes.
+ * MariaDB 11.x installs only mariadb_*.sql; 10.x installs only mysql_*.sql.
+ * `base` is the stem, e.g. 'system_tables' or 'system_tables_data'.
+ */
+export function resolveShareSql(shareDir: string, base: string): string {
+    const candidates = [`mariadb_${base}.sql`, `mysql_${base}.sql`];
+    for (const name of candidates) {
+        const candidate = path.join(shareDir, name);
+        if (fs.pathExistsSync(candidate)) {
+            return fs.readFileSync(candidate, 'utf8');
+        }
+    }
+    throw new Error(
+        `MariaDB bootstrap: found neither ${candidates.join(' nor ')} in ${shareDir}`
+    );
+}
+
 export default class MariadbService extends LocalMain.LightningService {
     serviceName = 'mariadb';
     binVersion = MARIADB_VERSION;
@@ -107,8 +125,8 @@ export default class MariadbService extends LocalMain.LightningService {
         const platform = this.currentPlatform();
         const shareDir = path.join(this.getBasedir(platform), 'share');
 
-        const systemTables = fs.readFileSync(path.join(shareDir, 'mysql_system_tables.sql'), 'utf8');
-        const systemData = fs.readFileSync(path.join(shareDir, 'mysql_system_tables_data.sql'), 'utf8');
+        const systemTables = resolveShareSql(shareDir, 'system_tables');
+        const systemData = resolveShareSql(shareDir, 'system_tables_data');
 
         // Set root password via global_priv (MariaDB 10.4+ auth storage)
         const bootstrapSQL = [

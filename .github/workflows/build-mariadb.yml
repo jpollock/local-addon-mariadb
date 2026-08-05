@@ -169,12 +169,23 @@ jobs:
           mkdir -p "$SMOKE/data"
 
           # Mirrors bootstrapDatadir() in src/MariadbService.ts
+          pick_sql() {
+            for n in "install/share/mariadb_$1.sql" "install/share/mysql_$1.sql"; do
+              [ -f "$n" ] && { echo "$n"; return 0; }
+            done
+            echo "::error::neither mariadb_$1.sql nor mysql_$1.sql found in install/share" >&2
+            return 1
+          }
+          TABLES_SQL=$(pick_sql system_tables) || exit 1
+          DATA_SQL=$(pick_sql system_tables_data) || exit 1
+          echo "Using $TABLES_SQL and $DATA_SQL"
+
           {
             echo 'CREATE DATABASE IF NOT EXISTS mysql;'
             echo 'USE mysql;'
-            cat install/share/mysql_system_tables.sql
+            cat "$TABLES_SQL"
             echo 'USE mysql;'
-            cat install/share/mysql_system_tables_data.sql
+            cat "$DATA_SQL"
             echo "UPDATE mysql.global_priv SET priv=json_set(priv,'\$.plugin','mysql_native_password','\$.authentication_string',PASSWORD('root')) WHERE user='root' AND host='localhost';"
             echo 'FLUSH PRIVILEGES;'
           } > "$SMOKE/init.sql"

@@ -171,3 +171,57 @@ describe('MariadbService.setupDatabase()', () => {
         await expect(svc['setupDatabase']()).resolves.toBeUndefined();
     });
 });
+
+describe('share SQL file resolution', () => {
+    const os = require('os');
+    const fsExtra = require('fs-extra');
+    const pathMod = require('path');
+
+    function makeShareDir(files: Record<string, string>): string {
+        const dir = fsExtra.mkdtempSync(pathMod.join(os.tmpdir(), 'mariadb-share-'));
+        for (const [name, body] of Object.entries(files)) {
+            fsExtra.writeFileSync(pathMod.join(dir, name), body);
+        }
+        return dir;
+    }
+
+    it('resolves the MariaDB 11.x layout (mariadb_* names)', () => {
+        const dir = makeShareDir({
+            'mariadb_system_tables.sql': '-- 11x tables',
+            'mariadb_system_tables_data.sql': '-- 11x data',
+        });
+        const { resolveShareSql } = require('../src/MariadbService');
+        expect(resolveShareSql(dir, 'system_tables')).toBe('-- 11x tables');
+        expect(resolveShareSql(dir, 'system_tables_data')).toBe('-- 11x data');
+        fsExtra.removeSync(dir);
+    });
+
+    it('resolves the MariaDB 10.x layout (mysql_* names)', () => {
+        const dir = makeShareDir({
+            'mysql_system_tables.sql': '-- 10x tables',
+            'mysql_system_tables_data.sql': '-- 10x data',
+        });
+        const { resolveShareSql } = require('../src/MariadbService');
+        expect(resolveShareSql(dir, 'system_tables')).toBe('-- 10x tables');
+        expect(resolveShareSql(dir, 'system_tables_data')).toBe('-- 10x data');
+        fsExtra.removeSync(dir);
+    });
+
+    it('prefers mariadb_* when both are present', () => {
+        const dir = makeShareDir({
+            'mariadb_system_tables.sql': '-- preferred',
+            'mysql_system_tables.sql': '-- legacy',
+        });
+        const { resolveShareSql } = require('../src/MariadbService');
+        expect(resolveShareSql(dir, 'system_tables')).toBe('-- preferred');
+        fsExtra.removeSync(dir);
+    });
+
+    it('throws a diagnostic error naming both candidates when neither exists', () => {
+        const dir = makeShareDir({ 'unrelated.sql': '' });
+        const { resolveShareSql } = require('../src/MariadbService');
+        expect(() => resolveShareSql(dir, 'system_tables')).toThrow(/mariadb_system_tables\.sql/);
+        expect(() => resolveShareSql(dir, 'system_tables')).toThrow(/mysql_system_tables\.sql/);
+        fsExtra.removeSync(dir);
+    });
+});
