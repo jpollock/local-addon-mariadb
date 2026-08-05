@@ -8,6 +8,7 @@ export interface ServiceVersion {
 }
 
 export const SUPPORTED_VERSIONS: ServiceVersion[] = [
-    { version: '10.6.23',  bundled: true  },
+    { version: '10.6.23',  bundled: true  },  // EOL upstream 2026-07-06
     { version: '10.11.11', bundled: false },
+    { version: '11.8.8',   bundled: false },
 ];

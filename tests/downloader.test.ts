@@ -85,10 +85,32 @@ describe('downloadBinaries with explicit version', () => {
         expect(url).toContain('bin-darwin-arm64-10.11.11.tar.gz');
     });
 
+    it('uses the correct URL for 11.8.8', () => {
+        const url = getBinaryUrl('darwin-arm64', '11.8.8');
+        expect(url).toContain('/v11.8.8/');
+        expect(url).toContain('bin-darwin-arm64-11.8.8.tar.gz');
+    });
+
     it('hasBinaries returns false when darwin-arm64 dir exists but mysqld missing', async () => {
         const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mariadb-v2-'));
         await fs.ensureDir(path.join(tmpDir, 'bin', 'darwin-arm64', 'bin'));
         expect(await hasBinaries(tmpDir, 'darwin-arm64')).toBe(false);
         await fs.remove(tmpDir);
+    });
+});
+
+describe('SUPPORTED_VERSIONS', () => {
+    it('includes 11.8.8 as a non-bundled version', () => {
+        const { SUPPORTED_VERSIONS } = require('../src/constants');
+        const entry = SUPPORTED_VERSIONS.find((v: any) => v.version === '11.8.8');
+        expect(entry).toBeDefined();
+        expect(entry.bundled).toBe(false);
+    });
+
+    it('keeps 10.6.23 as the only bundled version', () => {
+        const { SUPPORTED_VERSIONS } = require('../src/constants');
+        const bundled = SUPPORTED_VERSIONS.filter((v: any) => v.bundled);
+        expect(bundled).toHaveLength(1);
+        expect(bundled[0].version).toBe('10.6.23');
     });
 });
